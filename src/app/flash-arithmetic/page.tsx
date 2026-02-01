@@ -12,8 +12,8 @@ const createAudioContext = (): AudioContext | null => {
     return new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
 };
 
-// Play a short beep sound
-const playBeep = (audioCtx: AudioContext | null, frequency: number, duration: number, volume: number = 0.15) => {
+// Play countdown beep (sine wave for countdown)
+const playCountdownBeep = (audioCtx: AudioContext | null, frequency: number, duration: number, volume: number = 0.15) => {
     if (!audioCtx) return;
 
     const oscillator = audioCtx.createOscillator();
@@ -30,6 +30,49 @@ const playBeep = (audioCtx: AudioContext | null, frequency: number, duration: nu
 
     oscillator.start(audioCtx.currentTime);
     oscillator.stop(audioCtx.currentTime + duration);
+};
+
+// Play Flash Anzan style tick sound (sharp, crisp click)
+const playFlashTick = (audioCtx: AudioContext | null, volume: number = 0.3) => {
+    if (!audioCtx) return;
+
+    // Create a short noise burst for the tick sound
+    const bufferSize = audioCtx.sampleRate * 0.015; // 15ms duration
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    // Generate filtered noise that sounds like a sharp tick/click
+    for (let i = 0; i < bufferSize; i++) {
+        // Quick exponential decay for sharp attack
+        const envelope = Math.exp(-i / (bufferSize * 0.1));
+        // Mix of noise for texture
+        data[i] = (Math.random() * 2 - 1) * envelope;
+    }
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+
+    // High-pass filter to make it crisp
+    const highpass = audioCtx.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 2000;
+    highpass.Q.value = 1;
+
+    // Band-pass for the "tick" character
+    const bandpass = audioCtx.createBiquadFilter();
+    bandpass.type = "bandpass";
+    bandpass.frequency.value = 4000;
+    bandpass.Q.value = 2;
+
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = volume;
+
+    source.connect(highpass);
+    highpass.connect(bandpass);
+    bandpass.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    source.start(audioCtx.currentTime);
 };
 
 export default function FlashArithmeticPage() {
@@ -85,13 +128,13 @@ export default function FlashArithmeticPage() {
         if (countdown > 0) {
             // Higher pitch for each countdown step (3=lower, 1=higher)
             const freq = countdown === 3 ? 440 : countdown === 2 ? 523 : 659;
-            playBeep(audioCtxRef.current, freq, 0.15, 0.2);
+            playCountdownBeep(audioCtxRef.current, freq, 0.15, 0.2);
 
             const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
             return () => clearTimeout(timer);
         } else {
             // Play start sound (higher pitch)
-            playBeep(audioCtxRef.current, 880, 0.1, 0.25);
+            playCountdownBeep(audioCtxRef.current, 880, 0.1, 0.25);
 
             // Generate numbers and start
             const nums = Array.from({ length: count }, () => generateNumber(digits));
@@ -109,7 +152,7 @@ export default function FlashArithmeticPage() {
 
         // Show number instantly and play sound
         setShowNumber(true);
-        playBeep(audioCtxRef.current, 600, 0.05, 0.12);
+        playFlashTick(audioCtxRef.current);
 
         const timer = setTimeout(() => {
             // Hide number instantly
